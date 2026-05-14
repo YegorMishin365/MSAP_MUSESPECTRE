@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MUSESPECTRE — Real-Time Audio Signal Analyzer</title>
+<style>
+  :root {
+    --bg: #05070d;
+    --bg2: #080b13;
+    --glass: rgba(14, 20, 32, 0.72);
+    --glass2: rgba(20, 28, 42, 0.82);
+    --border: rgba(135, 220, 255, 0.16);
+    --border2: rgba(255, 255, 255, 0.08);
+    --text: #eef6ff;
+    --muted: #7d8fa3;
+    --muted2: #526274;
+    --cyan: #00e5ff;
+    --pink: #ff3c8a;
+    --lime: #a8ff3e;
+    --violet: #a174ff;
+    --orange: #ffb347;
+    --danger: #ff4d6d;
+    --mono: Consolas, "SFMono-Regular", "Roboto Mono", monospace;
+    --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    min-height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(circle at 20% 10%, rgba(0,229,255,0.16), transparent 28%),
+      radial-gradient(circle at 80% 18%, rgba(255,60,138,0.14), transparent 30%),
+      radial-gradient(circle at 50% 90%, rgba(168,255,62,0.10), transparent 34%),
+      linear-gradient(135deg, #05070d, #080b14 45%, #05070d);
+    z-index: -3;
+  }
+
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: radial-gradient(circle at center, black 0%, transparent 78%);
+    animation: gridMove 14s linear infinite;
+    z-index: -2;
+    pointer-events: none;
+  }
+
+  @keyframes gridMove {
+    from { transform: translateY(0); }
+    to { transform: translateY(42px); }
+  }
+
+  .back-btn {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    z-index: 50;
+    text-decoration: none;
+    color: var(--text);
+    border: 1px solid var(--border);
+    background: rgba(5, 9, 17, 0.72);
+    backdrop-filter: blur(18px);
+    padding: 10px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    box-shadow: 0 0 20px rgba(0,229,255,0.08);
+    transition: 0.2s ease;
+  }
+
+  .back-btn:hover {
+    border-color: var(--cyan);
+    color: var(--cyan);
+    box-shadow: 0 0 28px rgba(0,229,255,0.22);
+  }
+
+  #particleCanvas {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    opacity: 0.75;
+    pointer-events: none;
+  }
+
+  .app {
+    width: min(1240px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 82px 0 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 18px;
+    align-items: end;
+    padding: 22px;
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    background: linear-gradient(135deg, rgba(14,20,32,0.78), rgba(8,10,18,0.58));
+    backdrop-filter: blur(22px);
+    box-shadow: 0 28px 90px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.05);
+    position: relative;
+    overflow: hidden;
+  }
+
+  header::before {
+    content: "";
+    position: absolute;
+    inset: -120px;
+    background: conic-gradient(from 90deg, transparent, rgba(0,229,255,0.18), transparent, rgba(255,60,138,0.15), transparent);
+    animation: spinGlow 18s linear infinite;
+    opacity: 0.55;
+  }
+
+  header > * { position: relative; z-index: 1; }
+
+  @keyframes spinGlow {
+    to { transform: rotate(360deg); }
+  }
+
+  .brand-kicker {
+    font-family: var(--mono);
+    color: var(--cyan);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .brand {
+    font-size: clamp(2.8rem, 8vw, 6.3rem);
+    line-height: 0.88;
+    letter-spacing: -0.08em;
+    font-weight: 900;
+  }
+
+  .brand span {
+    color: transparent;
+    background: linear-gradient(90deg, var(--cyan), var(--pink), var(--lime));
+    -webkit-background-clip: text;
+    background-clip: text;
+    text-shadow: 0 0 28px rgba(0,229,255,0.22);
+  }
+
+  .subtitle {
+    margin-top: 12px;
+    color: var(--muted);
+    max-width: 720px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .badge-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .badge {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 11px;
+    background: rgba(255,255,255,0.03);
+  }
+
+  .badge.ok { color: var(--lime); border-color: rgba(168,255,62,0.35); }
+
+  .instructions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  .step {
+    border: 1px solid var(--border2);
+    border-radius: 20px;
+    padding: 14px;
+    background: rgba(14,20,32,0.52);
+    backdrop-filter: blur(18px);
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .step b {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin-right: 8px;
+    background: rgba(0,229,255,0.12);
+    color: var(--cyan);
+    font-family: var(--mono);
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 16px;
+  }
+
+  .panel {
+    border: 1px solid var(--border);
+    border-radius: 26px;
+    background: var(--glass);
+    backdrop-filter: blur(22px);
+    overflow: hidden;
+    box-shadow: 0 20px 70px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border2);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--pink);
+    box-shadow: 0 0 12px currentColor;
+  }
+
+  .dot.green { background: var(--lime); }
+  .dot.cyan { background: var(--cyan); }
+
+  .panel-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .drop-zone {
+    border: 1px dashed rgba(0,229,255,0.22);
+    border-radius: 22px;
+    min-height: 158px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-align: center;
+    background: linear-gradient(135deg, rgba(0,229,255,0.045), rgba(255,60,138,0.028));
+    cursor: pointer;
+    transition: 0.2s ease;
+  }
+
+  .drop-zone:hover, .drop-zone.dragover {
+    transform: translateY(-1px);
+    border-color: var(--cyan);
+    box-shadow: inset 0 0 26px rgba(0,229,255,0.08), 0 0 24px rgba(0,229,255,0.08);
+  }
+
+  .drop-icon {
+    width: 52px;
+    height: 52px;
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    color: var(--cyan);
+    font-size: 26px;
+    box-shadow: 0 0 22px rgba(0,229,255,0.12);
+  }
+
+  .drop-zone strong { font-size: 14px; }
+  .drop-zone span { color: var(--muted); font-size: 12px; line-height: 1.55; }
+  #fileInput { display: none; }
+
+  button {
+    font-family: inherit;
+  }
+
+  .primary-btn, .ctrl-btn, .mode-btn, .chip-btn {
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.035);
+    color: var(--text);
+    border-radius: 16px;
+    padding: 11px 13px;
+    cursor: pointer;
+    transition: 0.16s ease;
+  }
+
+  .primary-btn {
+    color: var(--cyan);
+    border-color: rgba(0,229,255,0.35);
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 11px;
+  }
+
+  .primary-btn:hover, .ctrl-btn:hover, .mode-btn:hover, .chip-btn:hover {
+    transform: translateY(-1px);
+    border-color: var(--cyan);
+    box-shadow: 0 0 20px rgba(0,229,255,0.12);
+  }
+
+  .file-info {
+    display: none;
+    border: 1px solid var(--border2);
+    border-radius: 18px;
+    background: rgba(0,0,0,0.18);
+    overflow: hidden;
+  }
+
+  .file-info.visible { display: block; }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 11px;
+    border-bottom: 1px solid var(--border2);
+    font-size: 12px;
+  }
+
+  .info-row:last-child { border-bottom: none; }
+  .info-row .label { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; }
+  .info-row .value { color: var(--cyan); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
+
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .ctrl-btn {
+    font-size: 18px;
+    padding: 12px;
+  }
+
+  .ctrl-btn.active {
+    color: var(--cyan);
+    border-color: var(--cyan);
+    background: rgba(0,229,255,0.08);
+  }
+
+  .ctrl-btn:disabled {
+    opacity: 0.28;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .progress-wrap { display: flex; flex-direction: column; gap: 7px; }
+  .progress {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    cursor: pointer;
+    overflow: hidden;
+    border: 1px solid var(--border2);
+  }
+  .progress-inner {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--cyan), var(--pink), var(--lime));
+    box-shadow: 0 0 18px rgba(0,229,255,0.35);
+  }
+  .time-row {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .meter-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .meter {
+    border: 1px solid var(--border2);
+    border-radius: 16px;
+    padding: 10px;
+    background: rgba(0,0,0,0.16);
+  }
+
+  .meter-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    margin-bottom: 8px;
+  }
+
+  .meter-value { color: var(--text); letter-spacing: 0; }
+  .meter-track {
+    height: 8px;
+    background: rgba(255,255,255,0.055);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .meter-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--cyan), var(--lime));
+  }
+  .meter-fill.mid { background: linear-gradient(90deg, var(--violet), var(--pink)); }
+  .meter-fill.high { background: linear-gradient(90deg, var(--orange), var(--pink)); }
+  .meter-fill.rms { background: linear-gradient(90deg, var(--cyan), var(--violet)); }
+  .meter-fill.peak { background: linear-gradient(90deg, var(--pink), var(--orange)); }
+
+  .main-panel {
+    min-height: 610px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mode-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    border-bottom: 1px solid var(--border2);
+  }
+
+  .mode-btn {
+    border: none;
+    border-right: 1px solid var(--border2);
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 12px 6px;
+  }
+
+  .mode-btn:last-child { border-right: none; }
+  .mode-btn.active {
+    color: var(--cyan);
+    background: rgba(0,229,255,0.075);
+    box-shadow: inset 0 -2px 0 var(--cyan);
+  }
+
+  .canvas-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 410px;
+    background: rgba(0,0,0,0.28);
+  }
+
+  #vizCanvas {
+    width: 100%;
+    height: 100%;
+    min-height: 410px;
+    display: block;
+  }
+
+  .idle-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    pointer-events: none;
+    background: radial-gradient(circle at center, rgba(0,229,255,0.06), transparent 46%);
+  }
+
+  .idle-title {
+    font-size: clamp(1.4rem, 3vw, 2.2rem);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: rgba(238,246,255,0.26);
+  }
+
+  .idle-sub {
+    color: rgba(125,143,163,0.55);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+  }
+
+  .analysis-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    padding: 12px;
+    border-top: 1px solid var(--border2);
+    background: rgba(0,0,0,0.16);
+  }
+
+  .stat-card {
+    border: 1px solid var(--border2);
+    border-radius: 18px;
+    padding: 12px;
+    background: rgba(255,255,255,0.028);
+  }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.13em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 7px;
+  }
+
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 20px;
+    color: var(--text);
+  }
+
+  .stat-note {
+    margin-top: 5px;
+    font-size: 11px;
+    color: var(--muted2);
+  }
+
+  .chips {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .chip-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    padding: 9px;
+  }
+
+  .chip-btn.active {
+    color: var(--lime);
+    border-color: rgba(168,255,62,0.35);
+    background: rgba(168,255,62,0.06);
+  }
+
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border2);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--muted2);
+  }
+
+  .status-dot.active {
+    background: var(--lime);
+    box-shadow: 0 0 14px var(--lime);
+  }
+
+  .status-right { margin-left: auto; opacity: 0.65; }
+
+  @media (max-width: 980px) {
+    header { grid-template-columns: 1fr; }
+    .badge-stack { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
+    .instructions { grid-template-columns: 1fr; }
+    .layout { grid-template-columns: 1fr; }
+    .analysis-grid { grid-template-columns: repeat(2, 1fr); }
+    .mode-row { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 560px) {
+    .app { width: min(100% - 20px, 1240px); padding-top: 76px; }
+    .analysis-grid { grid-template-columns: 1fr; }
+    .brand { font-size: 2.6rem; }
+  }
+</style>
+</head>
+<body>
+<a class="back-btn" href="/">← Späť na portál</a>
+<canvas id="particleCanvas"></canvas>
+
+<div class="app">
+  <header>
+    <div>
+      <div class="brand-kicker">B-MSAP // client-side multimedia service</div>
+      <h1 class="brand">MUSE<span>SPECTRE</span></h1>
+      <p class="subtitle">
+        Real-time audio signal analyzer built only with HTML5 Canvas and Web Audio API. Upload a local audio file and inspect waveform, FFT bars, STFT spectrogram, band energy, dominant frequency, RMS and peak level directly in the browser.
+      </p>
+    </div>
+    <div class="badge-stack">
+      <div class="badge ok">NO BACKEND</div>
+      <div class="badge">INPUT → AUDIO FILE</div>
+      <div class="badge">OUTPUT → DSP VISUALIZATION</div>
+    </div>
+  </header>
+
+  <section class="instructions">
+    <div class="step"><b>1</b>Nahraj MP3/WAV/OGG/FLAC súbor cez drag & drop alebo tlačidlo.</div>
+    <div class="step"><b>2</b>Stlač Play a sleduj vizualizáciu signálu v časovej aj frekvenčnej oblasti.</div>
+    <div class="step"><b>3</b>Prepínaj módy: waveform, FFT, circular, combined a spectrogram/STFT.</div>
+  </section>
+
+  <main class="layout">
+    <aside class="panel">
+      <div class="panel-header"><span class="dot"></span>INPUT — Audio Source</div>
+      <div class="panel-body">
+        <div class="drop-zone" id="dropZone">
+          <div class="drop-icon">♪</div>
+          <strong>Pretiahni audio sem</strong>
+          <span>alebo klikni pre výber súboru<br>MP3 · WAV · OGG · FLAC</span>
+        </div>
+        <button class="primary-btn" onclick="document.getElementById('fileInput').click()">↑ Vybrať súbor</button>
+        <input type="file" id="fileInput" accept="audio/*" />
+
+        <div class="file-info" id="fileInfo">
+          <div class="info-row"><span class="label">SÚBOR</span><span class="value" id="infoName">—</span></div>
+          <div class="info-row"><span class="label">FORMÁT</span><span class="value" id="infoType">—</span></div>
+          <div class="info-row"><span class="label">VEĽKOSŤ</span><span class="value" id="infoSize">—</span></div>
+          <div class="info-row"><span class="label">TRVANIE</span><span class="value" id="infoDuration">—</span></div>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="progress" id="progressBar"><div class="progress-inner" id="progressInner"></div></div>
+          <div class="time-row"><span id="timeCurrent">0:00</span><span id="timeTotal">0:00</span></div>
+        </div>
+
+        <div class="controls">
+          <button class="ctrl-btn" id="btnPlay" disabled title="Play">▶</button>
+          <button class="ctrl-btn" id="btnPause" disabled title="Pause">⏸</button>
+          <button class="ctrl-btn" id="btnStop" disabled title="Stop">■</button>
+        </div>
+
+        <div class="panel-header" style="border:1px solid var(--border2); border-radius:16px; margin-top:4px;"><span class="dot cyan"></span>DSP Tools</div>
+        <div class="chips">
+          <button class="chip-btn active" id="toggleParticles">BASS FX</button>
+          <button class="chip-btn active" id="toggleGlow">NEON</button>
+          <button class="chip-btn active" id="toggleGrid">GRID</button>
+          <button class="chip-btn" id="toggleHold">PEAK HOLD</button>
+        </div>
+
+        <div class="meter-grid">
+          <div class="meter">
+            <div class="meter-top"><span>LOW 20–250Hz</span><span class="meter-value" id="lowVal">0%</span></div>
+            <div class="meter-track"><div class="meter-fill" id="lowFill"></div></div>
+          </div>
+          <div class="meter">
+            <div class="meter-top"><span>MID 250–4kHz</span><span class="meter-value" id="midVal">0%</span></div>
+            <div class="meter-track"><div class="meter-fill mid" id="midFill"></div></div>
+          </div>
+          <div class="meter">
+            <div class="meter-top"><span>HIGH 4k–20kHz</span><span class="meter-value" id="highVal">0%</span></div>
+            <div class="meter-track"><div class="meter-fill high" id="highFill"></div></div>
+          </div>
+          <div class="meter">
+            <div class="meter-top"><span>RMS POWER</span><span class="meter-value" id="rmsVal">-∞ dB</span></div>
+            <div class="meter-track"><div class="meter-fill rms" id="rmsFill"></div></div>
+          </div>
+          <div class="meter">
+            <div class="meter-top"><span>PEAK LEVEL</span><span class="meter-value" id="peakVal">-∞ dB</span></div>
+            <div class="meter-track"><div class="meter-fill peak" id="peakFill"></div></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="panel main-panel">
+      <div class="panel-header"><span class="dot green"></span>OUTPUT — Real-Time Audio Processing</div>
+      <div class="mode-row">
+        <button class="mode-btn active" data-mode="bars">FFT Bars</button>
+        <button class="mode-btn" data-mode="wave">Waveform</button>
+        <button class="mode-btn" data-mode="circular">Circular</button>
+        <button class="mode-btn" data-mode="combined">Combined</button>
+        <button class="mode-btn" data-mode="spectrogram">Spectrogram</button>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="vizCanvas"></canvas>
+        <div class="idle-overlay" id="idleOverlay">
+          <div class="idle-title">AWAITING SIGNAL</div>
+          <div class="idle-sub">upload audio file to start analysis</div>
+        </div>
+      </div>
+      <div class="analysis-grid">
+        <div class="stat-card">
+          <div class="stat-label">Dominant Frequency</div>
+          <div class="stat-value" id="domFreq">— Hz</div>
+          <div class="stat-note">FFT bin with max amplitude</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Approx. Note</div>
+          <div class="stat-value" id="noteName">—</div>
+          <div class="stat-note">A4 = 440 Hz reference</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Spectral Centroid</div>
+          <div class="stat-value" id="centroid">— Hz</div>
+          <div class="stat-note">brightness of signal spectrum</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Estimated Band</div>
+          <div class="stat-value" id="bandLabel">—</div>
+          <div class="stat-note">bass / mid / high dominance</div>
+        </div>
+      </div>
+      <div class="status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">IDLE — žiadny súbor</span>
+        <span class="status-right">Web Audio API · Canvas 2D · FFT · STFT-like Spectrogram</span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+let audioCtx = null;
+let analyser = null;
+let source = null;
+let audioBuffer = null;
+let startTime = 0;
+let pauseOffset = 0;
+let isPlaying = false;
+let animFrame = null;
+let duration = 0;
+let vizMode = "bars";
+let sampleRate = 44100;
+let peakHold = 0;
+let bassEnergyGlobal = 0;
+let options = { particles: true, glow: true, grid: true, hold: false };
+
+const canvas = document.getElementById("vizCanvas");
+const ctx = canvas.getContext("2d");
+const pCanvas = document.getElementById("particleCanvas");
+const pctx = pCanvas.getContext("2d");
+const idleOverlay = document.getElementById("idleOverlay");
+
+let spectrogramImage = null;
+let particles = [];
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = Math.max(600, Math.floor(rect.width));
+  canvas.height = Math.max(410, Math.floor(rect.height));
+  if (!spectrogramImage) spectrogramImage = ctx.createImageData(canvas.width, canvas.height);
+  if (!isPlaying) drawIdle();
+}
+
+function resizeParticles() {
+  pCanvas.width = innerWidth;
+  pCanvas.height = innerHeight;
+  particles = Array.from({ length: 70 }, () => ({
+    x: Math.random() * pCanvas.width,
+    y: Math.random() * pCanvas.height,
+    vx: (Math.random() - 0.5) * 0.28,
+    vy: (Math.random() - 0.5) * 0.28,
+    r: Math.random() * 2.2 + 0.6,
+    a: Math.random() * 0.5 + 0.1
+  }));
+}
+
+window.addEventListener("resize", () => { resizeCanvas(); resizeParticles(); });
+resizeCanvas();
+resizeParticles();
+
+const dropZone = document.getElementById("dropZone");
+const fileInput = document.getElementById("fileInput");
+
+dropZone.addEventListener("click", () => fileInput.click());
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+dropZone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropZone.classList.remove("dragover");
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+function loadFile(file) {
+  stopAudio(true);
+  setStatus("NAČÍTAVAM AUDIO...", false);
+  document.getElementById("infoName").textContent = file.name.length > 24 ? file.name.slice(0, 21) + "…" : file.name;
+  document.getElementById("infoType").textContent = (file.name.split(".").pop() || "audio").toUpperCase();
+  document.getElementById("infoSize").textContent = (file.size / 1048576).toFixed(2) + " MB";
+  document.getElementById("infoDuration").textContent = "...";
+  document.getElementById("fileInfo").classList.add("visible");
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 4096;
+      analyser.smoothingTimeConstant = 0.78;
+      analyser.connect(audioCtx.destination);
+    }
+    audioCtx.decodeAudioData(e.target.result.slice(0), buffer => {
+      audioBuffer = buffer;
+      duration = buffer.duration;
+      sampleRate = buffer.sampleRate;
+      pauseOffset = 0;
+      peakHold = 0;
+      clearSpectrogram();
+      document.getElementById("infoDuration").textContent = fmt(duration);
+      document.getElementById("timeTotal").textContent = fmt(duration);
+      ["btnPlay", "btnPause", "btnStop"].forEach(id => document.getElementById(id).disabled = false);
+      idleOverlay.style.display = "none";
+      setStatus("READY — " + file.name, false);
+      playAudio();
+    }, () => {
+      setStatus("CHYBA — nepodporovaný alebo poškodený audio formát", false);
+      idleOverlay.style.display = "flex";
+    });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function playAudio() {
+  if (!audioBuffer || isPlaying) return;
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  source = audioCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(analyser);
+  source.start(0, pauseOffset);
+  startTime = audioCtx.currentTime - pauseOffset;
+  isPlaying = true;
+  document.getElementById("btnPlay").classList.add("active");
+  setStatus("PLAYING — real-time DSP analysis", true);
+  source.onended = () => {
+    if (isPlaying) finishAudio();
+  };
+  drawLoop();
+}
+
+function pauseAudio() {
+  if (!audioBuffer) return;
+  if (!isPlaying) { playAudio(); return; }
+  pauseOffset = audioCtx.currentTime - startTime;
+  try { source.stop(); } catch(e) {}
+  isPlaying = false;
+  document.getElementById("btnPlay").classList.remove("active");
+  setStatus("PAUSED", false);
+  cancelAnimationFrame(animFrame);
+}
+
+function stopAudio(loading = false) {
+  if (source) { try { source.stop(); } catch(e) {} }
+  isPlaying = false;
+  pauseOffset = 0;
+  cancelAnimationFrame(animFrame);
+  document.getElementById("btnPlay").classList.remove("active");
+  document.getElementById("progressInner").style.width = "0%";
+  document.getElementById("timeCurrent").textContent = "0:00";
+  if (!loading && audioBuffer) {
+    idleOverlay.style.display = "flex";
+    setStatus("STOPPED", false);
+    drawIdle();
+  }
+}
+
+function finishAudio() {
+  isPlaying = false;
+  pauseOffset = 0;
+  document.getElementById("btnPlay").classList.remove("active");
+  document.getElementById("progressInner").style.width = "0%";
+  document.getElementById("timeCurrent").textContent = "0:00";
+  idleOverlay.style.display = "flex";
+  setStatus("FINISHED", false);
+  cancelAnimationFrame(animFrame);
+  drawIdle();
+}
+
+function seekTo(ratio) {
+  if (!audioBuffer) return;
+  const newTime = Math.max(0, Math.min(ratio * duration, duration));
+  const wasPlaying = isPlaying;
+  if (isPlaying) {
+    try { source.stop(); } catch(e) {}
+    isPlaying = false;
+  }
+  pauseOffset = newTime;
+  document.getElementById("progressInner").style.width = (ratio * 100) + "%";
+  document.getElementById("timeCurrent").textContent = fmt(newTime);
+  if (wasPlaying) playAudio();
+}
+
+document.getElementById("btnPlay").addEventListener("click", () => { if (!isPlaying) playAudio(); });
+document.getElementById("btnPause").addEventListener("click", pauseAudio);
+document.getElementById("btnStop").addEventListener("click", () => stopAudio(false));
+document.getElementById("progressBar").addEventListener("click", e => {
+  const rect = e.currentTarget.getBoundingClientRect();
+  seekTo((e.clientX - rect.left) / rect.width);
+});
+
+document.querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    vizMode = btn.dataset.mode;
+    if (vizMode === "spectrogram") clearSpectrogram();
+  });
+});
+
+function bindToggle(id, key) {
+  const btn = document.getElementById(id);
+  btn.addEventListener("click", () => {
+    options[key] = !options[key];
+    btn.classList.toggle("active", options[key]);
+  });
+}
+bindToggle("toggleParticles", "particles");
+bindToggle("toggleGlow", "glow");
+bindToggle("toggleGrid", "grid");
+bindToggle("toggleHold", "hold");
+
+function drawLoop() {
+  animFrame = requestAnimationFrame(drawLoop);
+  const W = canvas.width, H = canvas.height;
+  const fData = new Uint8Array(analyser.frequencyBinCount);
+  const tData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(fData);
+  analyser.getByteTimeDomainData(tData);
+
+  if (isPlaying) {
+    const elapsed = audioCtx.currentTime - startTime;
+    const pct = Math.min(elapsed / duration, 1);
+    document.getElementById("progressInner").style.width = (pct * 100) + "%";
+    document.getElementById("timeCurrent").textContent = fmt(elapsed);
+  }
+
+  const metrics = analyzeSignal(fData, tData);
+  updateMeters(metrics);
+  drawParticles(metrics.low);
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = "rgba(3,5,10,0.94)";
+  ctx.fillRect(0,0,W,H);
+  if (options.grid) drawGrid(W,H);
+
+  if (vizMode === "bars") drawBars(fData,W,H,metrics);
+  else if (vizMode === "wave") drawWave(tData,W,H,metrics);
+  else if (vizMode === "circular") drawCircular(fData,tData,W,H,metrics);
+  else if (vizMode === "combined") drawCombined(fData,tData,W,H,metrics);
+  else drawSpectrogram(fData,W,H);
+}
+
+function analyzeSignal(fData, tData) {
+  const nyquist = sampleRate / 2;
+  const hzPerBin = nyquist / fData.length;
+  const bandAvg = (lo, hi) => {
+    const a = Math.max(0, Math.floor(lo / hzPerBin));
+    const b = Math.min(fData.length - 1, Math.ceil(hi / hzPerBin));
+    let sum = 0, count = 0;
+    for (let i=a; i<=b; i++) { sum += fData[i]; count++; }
+    return count ? sum / (count * 255) : 0;
+  };
+
+  const low = bandAvg(20,250);
+  const mid = bandAvg(250,4000);
+  const high = bandAvg(4000,20000);
+
+  let maxVal = 0, maxBin = 0, weighted = 0, total = 0;
+  for (let i=1; i<fData.length; i++) {
+    const amp = fData[i];
+    const hz = i * hzPerBin;
+    if (amp > maxVal) { maxVal = amp; maxBin = i; }
+    weighted += hz * amp;
+    total += amp;
+  }
+  const dom = maxBin * hzPerBin;
+  const centroid = total > 0 ? weighted / total : 0;
+
+  let rmsSum = 0, peak = 0;
+  for (let i=0; i<tData.length; i++) {
+    const x = (tData[i] - 128) / 128;
+    rmsSum += x*x;
+    peak = Math.max(peak, Math.abs(x));
+  }
+  const rms = Math.sqrt(rmsSum / tData.length);
+  if (options.hold) peakHold = Math.max(peakHold * 0.985, peak);
+  else peakHold = peak;
+
+  let band = "MID";
+  if (low > mid && low > high) band = "LOW";
+  if (high > low && high > mid) band = "HIGH";
+
+  bassEnergyGlobal = low;
+  return { low, mid, high, dom, centroid, rms, peak: peakHold, band, hzPerBin };
+}
+
+function updateMeters(m) {
+  setBar("low", m.low);
+  setBar("mid", m.mid);
+  setBar("high", m.high);
+  setDb("rms", m.rms);
+  setDb("peak", m.peak);
+  document.getElementById("domFreq").textContent = m.dom > 10 ? Math.round(m.dom) + " Hz" : "— Hz";
+  document.getElementById("noteName").textContent = m.dom > 20 ? freqToNote(m.dom) : "—";
+  document.getElementById("centroid").textContent = m.centroid > 10 ? Math.round(m.centroid) + " Hz" : "— Hz";
+  document.getElementById("bandLabel").textContent = m.band;
+}
+
+function setBar(prefix, val) {
+  const pct = Math.min(100, Math.round(val * 100));
+  document.getElementById(prefix + "Fill").style.width = pct + "%";
+  document.getElementById(prefix + "Val").textContent = pct + "%";
+}
+
+function setDb(prefix, value) {
+  const db = value > 0.00001 ? 20 * Math.log10(value) : -Infinity;
+  const pct = Math.min(100, Math.max(0, (db + 60) / 60 * 100));
+  document.getElementById(prefix + "Fill").style.width = pct + "%";
+  document.getElementById(prefix + "Val").textContent = Number.isFinite(db) ? db.toFixed(1) + " dB" : "-∞ dB";
+}
+
+function drawGrid(W,H) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(135,220,255,0.055)";
+  ctx.lineWidth = 1;
+  for (let x=0; x<W; x+=42) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y=0; y<H; y+=42) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  ctx.strokeStyle = "rgba(0,229,255,0.10)";
+  ctx.setLineDash([6, 10]);
+  ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+  ctx.restore();
+}
+
+function drawBars(data,W,H,m) {
+  const count = 112;
+  const bw = W / count;
+  const step = Math.max(1, Math.floor(data.length / count));
+  for (let i=0; i<count; i++) {
+    const v = data[i*step] / 255;
+    const bh = Math.pow(v, 0.78) * H * 0.88;
+    const x = i * bw;
+    const hue = 178 + i/count * 140;
+    ctx.shadowBlur = options.glow && v > 0.35 ? 18 : 0;
+    ctx.shadowColor = `hsla(${hue},100%,62%,0.8)`;
+    const g = ctx.createLinearGradient(0,H,0,H-bh);
+    g.addColorStop(0, `hsla(${hue+35},100%,38%,0.64)`);
+    g.addColorStop(0.55, `hsla(${hue},100%,56%,0.88)`);
+    g.addColorStop(1, `hsla(${hue-30},100%,78%,0.92)`);
+    ctx.fillStyle = g;
+    roundRect(ctx, x+1, H-bh, Math.max(2,bw-3), bh, 6, true, false);
+  }
+  ctx.shadowBlur = 0;
+  drawAxisLabels(W,H);
+}
+
+function drawWave(data,W,H,m) {
+  const grad = ctx.createLinearGradient(0,0,W,0);
+  grad.addColorStop(0,varColor("--pink"));
+  grad.addColorStop(0.5,varColor("--cyan"));
+  grad.addColorStop(1,varColor("--lime"));
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 2.4;
+  ctx.shadowBlur = options.glow ? 14 : 0;
+  ctx.shadowColor = varColor("--cyan");
+  ctx.beginPath();
+  const step = W / data.length;
+  for (let i=0; i<data.length; i++) {
+    const x = i * step;
+    const y = ((data[i]/128)-1) * H * 0.42 + H/2;
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  drawAxisLabels(W,H);
+}
+
+function drawCircular(fData,tData,W,H,m) {
+  const cx = W/2, cy = H/2;
+  const r = Math.min(W,H) * (0.22 + m.rms * 0.1);
+  const bars = 180;
+  const step = Math.max(1, Math.floor(fData.length / bars));
+  for (let i=0; i<bars; i++) {
+    const v = fData[i*step] / 255;
+    const a = i/bars * Math.PI*2 - Math.PI/2;
+    const len = Math.pow(v,0.72) * r * 1.05;
+    const hue = 175 + i/bars * 210;
+    ctx.strokeStyle = `hsla(${hue},100%,60%,${0.26+v*0.74})`;
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = options.glow && v > 0.44 ? 14 : 0;
+    ctx.shadowColor = `hsl(${hue},100%,60%)`;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a)*r, cy + Math.sin(a)*r);
+    ctx.lineTo(cx + Math.cos(a)*(r+len), cy + Math.sin(a)*(r+len));
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(238,246,255,0.32)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i=0; i<tData.length; i++) {
+    const a = i/tData.length * Math.PI*2;
+    const v = ((tData[i]/128)-1) * r * 0.22;
+    const rr = r*0.48 + v;
+    const x = cx + Math.cos(a)*rr;
+    const y = cy + Math.sin(a)*rr;
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.closePath(); ctx.stroke();
+  ctx.fillStyle = "rgba(0,229,255,0.95)";
+  ctx.shadowBlur = options.glow ? 22 : 0;
+  ctx.shadowColor = varColor("--cyan");
+  ctx.beginPath(); ctx.arc(cx,cy,5+m.rms*20,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawCombined(fData,tData,W,H,m) {
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0,0,W,H*0.55); ctx.clip();
+  drawBars(fData,W,H*0.55,m);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(0,H*0.58);
+  ctx.beginPath(); ctx.rect(0,0,W,H*0.38); ctx.clip();
+  drawWave(tData,W,H*0.38,m);
+  ctx.restore();
+  ctx.strokeStyle = "rgba(0,229,255,0.18)";
+  ctx.setLineDash([4,10]);
+  ctx.beginPath(); ctx.moveTo(0,H*0.57); ctx.lineTo(W,H*0.57); ctx.stroke();
+  ctx.setLineDash([]);
+  label("FREQUENCY DOMAIN", 14, H*0.53);
+  label("TIME DOMAIN", 14, H*0.96);
+}
+
+function clearSpectrogram() {
+  if (!ctx || !canvas.width || !canvas.height) return;
+  spectrogramImage = ctx.createImageData(canvas.width, canvas.height);
+  for (let i=0; i<spectrogramImage.data.length; i+=4) {
+    spectrogramImage.data[i] = 3;
+    spectrogramImage.data[i+1] = 5;
+    spectrogramImage.data[i+2] = 10;
+    spectrogramImage.data[i+3] = 255;
+  }
+}
+
+function drawSpectrogram(fData,W,H) {
+  if (!spectrogramImage || spectrogramImage.width !== W || spectrogramImage.height !== H) clearSpectrogram();
+  const img = spectrogramImage;
+  const d = img.data;
+  for (let y=0; y<H; y++) {
+    for (let x=0; x<W-1; x++) {
+      const from = (y*W + x + 1) * 4;
+      const to = (y*W + x) * 4;
+      d[to] = d[from] * 0.995;
+      d[to+1] = d[from+1] * 0.995;
+      d[to+2] = d[from+2] * 0.995;
+      d[to+3] = 255;
+    }
+  }
+  for (let y=0; y<H; y++) {
+    const bin = Math.floor((1 - y/H) * fData.length * 0.72);
+    const v = fData[Math.max(0, Math.min(fData.length-1, bin))] / 255;
+    const c = heat(v);
+    const idx = (y*W + (W-1)) * 4;
+    d[idx] = c[0]; d[idx+1] = c[1]; d[idx+2] = c[2]; d[idx+3] = 255;
+  }
+  ctx.putImageData(img,0,0);
+  if (options.grid) drawGrid(W,H);
+  label("STFT / SPECTROGRAM — time →, frequency ↑, color = amplitude", 14, 24);
+}
+
+function heat(v) {
+  v = Math.pow(Math.max(0, Math.min(1, v)), 0.72);
+  if (v < 0.25) return [0, Math.round(40 + v*360), Math.round(70 + v*400)];
+  if (v < 0.55) return [Math.round((v-0.25)*460), Math.round(210 + (v-0.25)*80), 255];
+  if (v < 0.8) return [Math.round(140 + (v-0.55)*460), Math.round(255 - (v-0.55)*240), Math.round(255 - (v-0.55)*720)];
+  return [255, Math.round(80 + (v-0.8)*700), Math.round((v-0.8)*300)];
+}
+
+function drawParticles(low) {
+  pctx.clearRect(0,0,pCanvas.width,pCanvas.height);
+  if (!options.particles) return;
+  const boost = 1 + low * 4;
+  for (const p of particles) {
+    p.x += p.vx * boost;
+    p.y += p.vy * boost;
+    if (p.x < 0) p.x = pCanvas.width;
+    if (p.x > pCanvas.width) p.x = 0;
+    if (p.y < 0) p.y = pCanvas.height;
+    if (p.y > pCanvas.height) p.y = 0;
+    pctx.beginPath();
+    pctx.fillStyle = `rgba(0,229,255,${p.a * (0.45 + low)})`;
+    pctx.shadowBlur = 12 * low;
+    pctx.shadowColor = "#00e5ff";
+    pctx.arc(p.x,p.y,p.r*(1+low*2.2),0,Math.PI*2);
+    pctx.fill();
+  }
+  pctx.shadowBlur = 0;
+}
+
+function drawAxisLabels(W,H) {
+  label("0 Hz", 12, H-14);
+  label(Math.round(sampleRate/4) + " Hz", W/2 - 28, H-14);
+  label(Math.round(sampleRate/2) + " Hz", W-82, H-14);
+}
+
+function label(text,x,y) {
+  ctx.save();
+  ctx.fillStyle = "rgba(238,246,255,0.42)";
+  ctx.font = "11px Consolas, monospace";
+  ctx.fillText(text,x,y);
+  ctx.restore();
+}
+
+function drawIdle() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = "rgba(3,5,10,0.94)";
+  ctx.fillRect(0,0,W,H);
+  drawGrid(W,H);
+  ctx.strokeStyle = "rgba(0,229,255,0.16)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x=0; x<W; x++) {
+    const y = H/2 + Math.sin(x*0.018) * 26 + Math.sin(x*0.045) * 8;
+    x === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+}
+
+function roundRect(ctx,x,y,w,h,r,fill,stroke) {
+  if (h < r*2) r = h/2;
+  if (w < r*2) r = w/2;
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
+
+function freqToNote(freq) {
+  const names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  const midi = Math.round(69 + 12 * Math.log2(freq / 440));
+  const note = names[((midi % 12) + 12) % 12];
+  const octave = Math.floor(midi / 12) - 1;
+  const cents = Math.round((69 + 12 * Math.log2(freq / 440) - midi) * 100);
+  return note + octave + (cents ? ` ${cents > 0 ? "+" : ""}${cents}c` : "");
+}
+
+function fmt(s) {
+  if (!Number.isFinite(s)) return "0:00";
+  const m = Math.floor(s/60);
+  const sec = Math.floor(s%60);
+  return `${m}:${String(sec).padStart(2,"0")}`;
+}
+
+function setStatus(text, active) {
+  document.getElementById("statusText").textContent = text;
+  document.getElementById("statusDot").classList.toggle("active", active);
+}
+
+function varColor(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+clearSpectrogram();
+drawIdle();
+(function ambientParticles(){
+  drawParticles(isPlaying ? bassEnergyGlobal : 0.04);
+  requestAnimationFrame(ambientParticles);
+})();
+</script>
+</body>
+</html>
